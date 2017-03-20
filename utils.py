@@ -11,7 +11,7 @@ from django.shortcuts import get_object_or_404
 from django.http import HttpResponse, JsonResponse
 from django.db import IntegrityError
 from django.db.models import Q
-from django.core.exceptions import FieldDoesNotExist
+from django.core.exceptions import FieldDoesNotExist, ObjectDoesNotExist
 
 
 from .elasticsearch_wrapper import elastic_conn
@@ -389,12 +389,29 @@ def delete_func(id, user, model):
     return JsonResponse(data, status=status)
 
 
+
+class JsonError(Exception):
+    def __init__(self, message, status):
+        super().__init__(message, status)
+        self.message = message
+        self.status = status
+
 # Check si user() == obj.user -- Implementé pour filterID, analyserID, tokenizerID, SearchModelID
 def user_access(name, model, usr_req):
-    obj = get_object_or_404(model, name=name)
-    if obj.user == usr_req or obj.user is None:
-        return True
-    return False
+
+    try:
+        obj = model.objects.get(name=name)
+    except ObjectDoesNotExist:
+        data = {'error': 'Aucun objet %s ne correspond à la requête.' % model}
+        status = 404
+        raise JsonError(data, status=status)
+    if model._meta.get_field("user"):
+        try:
+            obj = model.objects.get(name=name, user=usr_req)
+        except ObjectDoesNotExist:
+            data = {"error": "Vous n'etes pas l'usager de cet élément."}
+            status = 403
+            raise JsonError(message=data, status=status)
 
 
 def clean_my_obj(obj):

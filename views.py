@@ -294,8 +294,12 @@ class FilterIDView(View):
         if isinstance(user, HttpResponse):
             return user
         name = (name.endswith('/') and name[:-1] or name)
-        if utils.user_access(name, Filter, user()) is False:
-            return JsonResponse({"error": "Accés au filtre impossible: L'usage de ce filtre est reservé."}, status=403)
+
+        try:
+            utils.user_access(name, Filter, user())
+        except utils.JsonError as e:
+            return JsonResponse(data={"error": e.message}, status=e.status)
+
         return JsonResponse(utils.get_object_id(user(), name, Filter))
 
     def put(self, request, name):
@@ -322,7 +326,7 @@ class FilterIDView(View):
             if len(flt) == 1:
                 status = 403
                 data = {"error": "Modification impossible: Vous n'etes pas l'usager de ce filtre"}
-            elif len(flt) == 0:
+            elif len(flt) == 0:  #Cas exclu car
                 status = 204
                 data = {"message": "Modification impossible: Aucun filtre ne correspond à votre requête."}
 
@@ -391,8 +395,12 @@ class AnalyzerIDView(View):
         if isinstance(user, HttpResponse):
             return user
         name = (name.endswith('/') and name[:-1] or name)
-        if utils.user_access(name, Analyzer, user()) is False:
-            return JsonResponse({"error": "Accés à l'analyseur impossible: L'usage de cet analyseur est reservé."}, status=403)
+
+        try:
+            utils.user_access(name, Analyzer, user())
+        except utils.JsonError as e:
+            return JsonResponse(data={"error": e.message}, status=e.status)
+
         return JsonResponse(utils.get_object_id(user(), name, Analyzer))
 
     def put(self, request, name):
@@ -421,7 +429,7 @@ class AnalyzerIDView(View):
             status = 403
             data = {"error": "Forbidden"}
         else:
-            status = 200
+            status = 204
             data = {}
             # On s'assure que tous les filtres existent
             for f in filters:
@@ -470,12 +478,11 @@ class TokenizerView(View):
         name = utils.read_name(body_data)
         if name is None:
             return JsonResponse({"error": "Echec de la création du token: Le nom du token est manquant."}, status=400)
-        if Tokenizer.objects.filter(name=name).count() > 0:
-            return JsonResponse({"error": "Echec de la création du token: Le nom du token doit etre unique."}, status=409)
 
         cfg = "config" in body_data and body_data["config"] or {}
 
-        token, created = Tokenizer.objects.get_or_create(config=cfg, user=user(), name=name)
+        token, created = Tokenizer.objects.get_or_create(name=name, defaults={"config":cfg,
+                                                                              "user":user()})
         status = created and 201 or 409
         return utils.format_json_get_create(request, created, status, token.name)
 
@@ -487,8 +494,12 @@ class TokenizerIDView(View):
         if isinstance(user, HttpResponse):
             return user
         name = (name.endswith('/') and name[:-1] or name)
-        if utils.user_access(name, Tokenizer, user()) is False:
-            return JsonResponse({"error": "Accés au token impossible: L'usage de ce token est reservé."}, status=403)
+
+        try:
+            utils.user_access(name, Tokenizer, user())
+        except utils.JsonError as e:
+            return JsonResponse(data={"error": e.message}, status=e.status)
+
         return JsonResponse(utils.get_object_id(user(), name, Tokenizer), safe=False)
 
     def put(self, request, name):
@@ -504,17 +515,14 @@ class TokenizerIDView(View):
         cfg = "config" in body_data and body_data["config"] or {}
 
         name = (name.endswith('/') and name[:-1] or name)
-        token = Tokenizer.objects.filter(name=name, user=user())
 
-        if len(token) == 1:
-            token.update(config=cfg)
-            status = 200
-            data = {}
-        elif len(token) == 0:
-            status = 204
-            data = {"message": "Modification impossible: Aucun token ne correspond à votre requête."}
+        try:
+            utils.user_access(name, Tokenizer, user())
+        except utils.JsonError as e:
+            return JsonResponse(data={"error": e.message}, status=e.status)
 
-        return JsonResponse(data, status=status)
+        Tokenizer.objects.filter(name=name).update(config=cfg)
+        return JsonResponse(data={}, status=204)
 
     def delete(self, request, name):
         user = utils.get_user_or_401(request)
@@ -715,8 +723,12 @@ class SearchModelIDView(View):
         if isinstance(user, HttpResponse):
             return user
         name = (name.endswith('/') and name[:-1] or name)
-        if utils.user_access(name, SearchModel, user()) is False:
-            return JsonResponse({"error": "Accés au model de recherche impossible: Son usage est reservé."}, status=403)
+
+        try:
+            utils.user_access(name, SearchModel, user())
+        except utils.JsonError as e:
+            return JsonResponse(data={"error": e.message}, status=e.status)
+
         return JsonResponse(utils.get_object_id(user(), name, SearchModel), status=200)
 
     def put(self, request, name):

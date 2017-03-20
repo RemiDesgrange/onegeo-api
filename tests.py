@@ -14,12 +14,15 @@ from .utils import *
 
 class SimpleTest(TestCase):
 
+
     def setUp(self):
         self.factory = RequestFactory()
 
-        # creer user2 et objets liés pour tester accés
         self.user = User.objects.create_user(
             username='user1', email='user_test@testing.com', password='passpass')
+        # creer user2 et objets liés pour tester accés
+        self.user2 = User.objects.create_user(
+            username='user2', email='user_test@testing.com', password='passpass')
 
         full_uri = check_uri('file:///RAAD')
         self.name_source_legit = "raad0"
@@ -29,12 +32,33 @@ class SimpleTest(TestCase):
         Filter.objects.create(name=self.name_filter_legit, user=self.user)
         self.filter = Filter.objects.get(name=self.name_filter_legit)
 
+        self.name_filter_legit2 = "namefilter2"
+        Filter.objects.create(name=self.name_filter_legit2, user=self.user)
+        self.filter2 = Filter.objects.get(name=self.name_filter_legit2)
+
+
+        self.name_analyzer_legit = "nameanalyzer"
+        Analyzer.objects.create(name=self.name_analyzer_legit, user=self.user)
+        self.analyzer = Analyzer.objects.get(name=self.name_analyzer_legit)
+
+        Analyzer.objects.create(name="nameanalyzerdelete", user=self.user)
+
+
         self.name_token_legit = "nametoken"
         Tokenizer.objects.create(name=self.name_token_legit, user=self.user)
         self.token = Tokenizer.objects.get(name=self.name_token_legit)
 
+        Tokenizer.objects.create(name="nametokendelete", user=self.user)
+
+        Tokenizer.objects.create(name="nametoken_usr2", user=self.user2)
 
 
+
+
+
+        #########################
+        #        SOURCE         #
+        #########################
     def test_source_get__with_anonymous_user(self):
         request = self.factory.get('/api/sources/')
         request.user = AnonymousUser()
@@ -112,6 +136,9 @@ class SimpleTest(TestCase):
         self.assertEqual(response2.status_code, 204)
 
 
+        #########################
+        #        CONTEXTE       #
+        #########################
     def test_contexts_post(self):
         # Utilisation d'une source dont la creation est garentie et de sa resource liée
         # Les tests étant réaliser sans garenti d'ordre, on s'assure d'avoir un couple source/resource disponible
@@ -178,15 +205,11 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 403)
 
 
-
+    #########################
+    #        FILTER         #
+    #########################
     def test_filter_get_authent(self):
 
-        """
-        name = models.CharField("Name", max_length=250, unique=True, primary_key=True)
-        user = models.ForeignKey(User, blank=True, null=True)
-        config = JSONField("Config", blank=True, null=True)
-        reserved = models.BooleanField("Reserved", default=False)
-        """
         rf1 = RequestFactory()
         request1 = rf1.get('/api/filters')
         request1.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='  # base64(user1:passpass)
@@ -195,12 +218,6 @@ class SimpleTest(TestCase):
 
     def test_filter_get_anonyme(self):
 
-        """
-        name = models.CharField("Name", max_length=250, unique=True, primary_key=True)
-        user = models.ForeignKey(User, blank=True, null=True)
-        config = JSONField("Config", blank=True, null=True)
-        reserved = models.BooleanField("Reserved", default=False)
-        """
         rf2 = RequestFactory()
         request1 = rf2.get('/api/filters')
         request1.META['HTTP_AUTHORIZATION'] = ''
@@ -213,7 +230,7 @@ class SimpleTest(TestCase):
         rf = RequestFactory()
 
         data = {"config": {"conf1": "val1"},
-                "name": "namefilter2"}
+                "name": "namefilter3"}
 
         request = rf.post('/api/filters/',
                             data=json.dumps(data),
@@ -222,6 +239,20 @@ class SimpleTest(TestCase):
 
         response = FilterView.as_view()(request)
         self.assertEqual(response.status_code, 201)
+
+    def test_filter_post(self):
+        rf = RequestFactory()
+
+        data = {"config": {"conf1": "val1"},
+                "name": "namefilter_anonyme"}
+
+        request = rf.post('/api/filters/',
+                            data=json.dumps(data),
+                            content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = ''
+
+        response = FilterView.as_view()(request)
+        self.assertEqual(response.status_code, 401)
 
 
     def test_filter_post_bad_params(self):
@@ -245,17 +276,28 @@ class SimpleTest(TestCase):
         response2 = FilterView.as_view()(request2)
         self.assertEqual(response2.status_code, 400)
 
-    def test_filter_id_get(self):
-        src = Source.objects.get(user=self.user, name=self.name_source_legit)
-        rsrc = Resource.objects.filter(source=src)
-        Context.objects.create(resource=rsrc[0], name="ctx_name", clmn_properties={"ppt1":"val1", "ppt2":"val2"})
 
-        request = self.factory.get('/api/filters/{}'.format(rsrc[0].id))
+    def test_filter_id_get(self):
+
+        name = "namefilter"
+        request = self.factory.get('/api/filters/{}'.format(name))
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
 
-        response = ContextIDView.as_view()(request, id=str(rsrc[0].id))
+        response = FilterIDView.as_view()(request, name=str(name))
 
         self.assertEqual(response.status_code, 200)
+
+    def test_filter_id_get_error_name(self):
+
+        name = "filter_unknown"
+        request = self.factory.get('/api/filters/{}'.format(name))
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+
+        response = FilterIDView.as_view()(request, name=str(name))
+
+        self.assertEqual(response.status_code, 404)
+
+
 
     def test_filter_id_get_anonyme(self):
         rf = RequestFactory()
@@ -264,6 +306,200 @@ class SimpleTest(TestCase):
         response = FilterIDView.as_view()(request, name=str(self.filter.name))
         self.assertEqual(response.status_code, 401)
 
+
+
+    #########################
+    #       ANALYSEUR       #
+    #########################
+    def test_analyzer_get(self):
+        rf = RequestFactory()
+        request = rf.get('/api/analyzers')
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='  # base64(user1:passpass)
+        response = AnalyzerView.as_view()(request)
+        self.assertEqual(response.status_code, 200)
+
+
+    def test_analyzer_get_anonymous(self):
+        rf = RequestFactory()
+        request = rf.get('/api/analyzers')
+        request.META['HTTP_AUTHORIZATION'] = ''
+        response = AnalyzerView.as_view()(request)
+        self.assertEqual(response.status_code, 401)
+
+
+    def test_analyzer_post(self):
+        rf = RequestFactory()
+
+        # Utilisation du token_legit
+        data = {"name":"daadada",
+                 "filters":["namefilter","namefilter2"],
+                 "tokenizer": "nametoken"}
+
+        request = rf.post('/api/analyzers/',
+                          data=json.dumps(data),
+                          content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+
+        response = AnalyzerView.as_view()(request)
+        self.assertEqual(response.status_code, 201)
+
+
+    def test_analyzer_post_anonymous(self):
+        rf1 = RequestFactory()
+
+        # Utilisation du token_legit
+        data = {"name": "daadada",
+                "filters": ["namefilter", "namefilter2"],
+                "tokenizer": "nametoken"}
+
+        request = rf1.post('/api/analyzers/',
+                           data=json.dumps(data),
+                           content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = ''
+
+        response = AnalyzerView.as_view()(request)
+        self.assertEqual(response.status_code, 401)
+
+
+    def test_analyzer_post_error_filters(self):
+        rf1 = RequestFactory()
+
+        # Utilisation du token_legit mais d'un mauvais filtre
+        data = {"name":"daadada",
+                 "filters":["namefilter","filter_unknown"],
+                 "tokenizer": "nametoken"}
+
+        request = rf1.post('/api/analyzers/',
+                          data=json.dumps(data),
+                          content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+
+        response = AnalyzerView.as_view()(request)
+        self.assertEqual(response.status_code, 400)
+
+
+    def test_analyzer_post_error_token(self):
+        rf1 = RequestFactory()
+
+        # Utilisation de filtres correct mais d'un mauvais token
+        data = {"name": "daadada",
+                "filters": ["namefilter", "namefilter2"],
+                "tokenizer": "token_uknown"}
+
+        request = rf1.post('/api/analyzers/',
+                           data=json.dumps(data),
+                           content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+
+        response = AnalyzerView.as_view()(request)
+        self.assertEqual(response.status_code, 400)
+
+
+    def test_analyzer_id_get(self):
+        rf = RequestFactory()
+        name = "nameanalyzer"
+        request = rf.get('/api/analyzers/{}'.format(name))
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+        response = AnalyzerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 200)
+
+
+    def test_analyzer_id_get_anonymous(self):
+        rf = RequestFactory()
+        name = "nameanalyzer"
+        request = rf.get('/api/analyzers/{}'.format(name))
+        request.META['HTTP_AUTHORIZATION'] = ''
+        response = AnalyzerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 401)
+
+
+    def test_analyzer_id_delete(self):
+        rf = RequestFactory()
+        name = "nameanalyzerdelete"
+        request = rf.delete('/api/analyzers/{}'.format(name))
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+        response = AnalyzerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 204)
+
+
+    def test_analyzer_id_delete(self):
+        rf = RequestFactory()
+        name = "nameanalyzerdelete"
+        request = rf.delete('/api/analyzers/{}'.format(name))
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+        response = AnalyzerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 204)
+
+
+    def test_analyzer_id_put(self):
+        rf = RequestFactory()
+
+        data = {"name": "daadada",
+                "filters": ["namefilter", "namefilter2"],
+                "tokenizer": "nametoken"}
+
+        name = "nameanalyzer"
+        request = rf.put('/api/analyzers/{}'.format(name),
+                          data=json.dumps(data),
+                          content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+
+        response = AnalyzerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 204)
+
+    def test_analyzer_id_put_anonymous(self):
+        rf = RequestFactory()
+
+        data = {"name": "daadada",
+                "filters": ["namefilter", "namefilter2"],
+                "tokenizer": "nametoken"}
+
+        name = "nameanalyzer"
+        request = rf.put('/api/analyzers/{}'.format(name),
+                          data=json.dumps(data),
+                          content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = ''
+
+        response = AnalyzerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 401)
+
+    def test_analyzer_id_put_error_filter(self):
+        rf = RequestFactory()
+
+        data = {"name": "daadada",
+                "filters": ["namefilter", "namefilter_unkown"],
+                "tokenizer": "nametoken"}
+
+        name = "nameanalyzer"
+        request = rf.put('/api/analyzers/{}'.format(name),
+                          data=json.dumps(data),
+                          content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+
+        response = AnalyzerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 400)
+
+    def test_analyzer_id_put_error_token(self):
+        rf = RequestFactory()
+
+        data = {"name": "daadada",
+                "filters": ["namefilter", "namefilter2"],
+                "tokenizer": "token_unknown"}
+
+        name = "nameanalyzer"
+        request = rf.put('/api/analyzers/{}'.format(name),
+                          data=json.dumps(data),
+                          content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+
+        response = AnalyzerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 400)
+
+
+
+    ########################
+    #       TOKENIZER      #
+    ########################
     def test_token_get(self):
         rf1 = RequestFactory()
         request1 = rf1.get('/api/tokenizers')
@@ -275,7 +511,7 @@ class SimpleTest(TestCase):
     def test_token_get_anonymous(self):
         rf1 = RequestFactory()
         request1 = rf1.get('/api/tokenizers')
-        request1.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3V='
+        request1.META['HTTP_AUTHORIZATION'] = ''
         response1 = TokenizerView.as_view()(request1)
         self.assertEqual(response1.status_code, 401)
 
@@ -287,12 +523,28 @@ class SimpleTest(TestCase):
                 "name": "nametoken2"}
 
         request = re.post('/api/tokenizers/',
-                                    data=json.dumps(data),
-                                    content_type="application/json")
+                          data=json.dumps(data),
+                          content_type="application/json")
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
 
         response = TokenizerView.as_view()(request)
         self.assertEqual(response.status_code, 201)
+
+
+    def test_token_post_anonymous(self):
+        re = RequestFactory()
+
+        data = {"config": {"conf1": "val1"},
+                "name": "nametoken2"}
+
+        request = re.post('/api/tokenizers/',
+                          data=json.dumps(data),
+                          content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = ''
+
+        response = TokenizerView.as_view()(request)
+        self.assertEqual(response.status_code, 401)
+
 
     def test_token_post_name_double(self):
         re = RequestFactory()
@@ -308,29 +560,75 @@ class SimpleTest(TestCase):
         response = TokenizerView.as_view()(request)
         self.assertEqual(response.status_code, 409)
 
-    # def test_analyzer(self):
-    #     """
-    #     name = models.CharField("Name", max_length=250, unique=True, primary_key=True)
-    #     user = models.ForeignKey(User, blank=True, null=True)
-    #     filter = models.ManyToManyField(Filter, blank=True)
-    #     tokenizer = models.ForeignKey("Tokenizer", blank=True, null=True)
-    #     reserved = models.BooleanField("Reserved", default=False)
-    #     """
-    #
-    #     # get analyzers
-    #     rf1 = RequestFactory()
-    #     request1 = rf1.get('/api/analyzers/')
-    #     request1.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3V='
-    #     response1 = AnalyzerView.as_view()(request1)
-    #     self.assertEqual(response1.status_code, 200)
-    #
-    #     # get analyzers ID
-    #     rf2 = RequestFactory()
-    #     name = Analyzer.objects.get(user=self.user)
-    #     request2 = rf1.get('/api/analyzers/',name)
-    #     request2.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3V='
-    #     response2 = AnalyzerIDView.as_view()(request1, name=str(name))
-    #     self.assertEqual(response1.status_code, 200)
+
+    def test_token_id_get(self):
+        rf = RequestFactory()
+        name = "nametoken"
+        request = rf.get('/api/tokenizers/{}'.format(name),
+                        content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+        response = TokenizerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 200)
+
+
+    def test_token_id_get_anonymouse(self):
+        rf = RequestFactory()
+        name = "nametoken"
+        request = rf.get('/api/tokenizers/{}'.format(name),
+                        content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = ''
+        response = TokenizerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 401)
+
+    def test_token_id_delete(self):
+        rf = RequestFactory()
+        name = "nametokendelete"
+        request = rf.delete('/api/tokenizers/{}'.format(name))
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+        response = TokenizerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 204)
+
+
+    def test_token_id_put(self):
+        rf = RequestFactory()
+        name = "nametoken"
+        data = {"config": {"conf1": "val1"}}
+
+        request = rf.put('/api/tokenizers/{}'.format(name),
+                         data=json.dumps(data),
+                         content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+        response = TokenizerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 204)
+
+    def test_token_id_put_wrong_usr(self):
+        rf = RequestFactory()
+        name = "nametoken_usr2"
+        data = {"config": {"conf1": "val1"}}
+
+        request = rf.put('/api/tokenizers/{}'.format(name),
+                         data=json.dumps(data),
+                         content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+        response = TokenizerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 403)
+
+    def test_token_id_put_anonymouse(self):
+        rf = RequestFactory()
+        name = "nametoken"
+        data = {"config": {"conf1": "val1"}}
+
+        request = rf.put('/api/tokenizers/{}'.format(name),
+                         data=json.dumps(data),
+                         content_type="application/json")
+        request.META['HTTP_AUTHORIZATION'] = ''
+        response = TokenizerIDView.as_view()(request, name=name)
+        self.assertEqual(response.status_code, 401)
+
+
+
+
+
 
 
 
