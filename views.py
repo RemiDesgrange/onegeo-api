@@ -824,3 +824,4 @@ class SearchView(View):
                 return JsonResponse(data=data, safe=False, status=200)
         else:
             return JsonResponse(data={'message': 'todo'}, safe=False, status=501)
+

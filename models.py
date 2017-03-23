@@ -151,6 +151,14 @@ class SearchModel(models.Model):
 
         super().save(*args, **kwargs)
 
+class Task(models.Model):
+
+    desc = models.CharField("Nom de l'opération", max_length=256)
+    is_running = models.BooleanField("Tâche en cours", default=True)
+    start_date = models.DateTimeField('Start', null=True, blank=True)
+    stop_date = models.DateTimeField('Stop', null=True, blank=True)
+    success = models.BooleanField("Success", default=True)
+
 
 @receiver(post_save, sender=Source)
 def on_save_source(sender, instance, *args, **kwargs):
