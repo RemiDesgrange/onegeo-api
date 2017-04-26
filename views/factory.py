@@ -1,210 +1,131 @@
 import json
 from re import search
+import urllib.parse as urlparse
 
-from django.core.exceptions import ValidationError
-from django.http import JsonResponse
+from django.core.exceptions import ValidationError, ObjectDoesNotExist
+from django.http import JsonResponse, HttpResponse
 
 from .. import utils
 from ..elasticsearch_wrapper import elastic_conn
 from ..exceptions import JsonError, MultiTaskError
-from ..models import Context, SearchModel, Task
+from ..models import SearchModel, Analyzer, Tokenizer
 
 
 
 MSG_406 = "Le format demandé n'est pas pris en charge. "
 
-def search_model_context_task(ctx_id, user):
-    if len(Task.objects.filter(model_type="context",
-                               model_type_id=ctx_id,
-                               user=user,
-                               stop_date=None)) > 0:
-        raise MultiTaskError()
-    else:
-        return True
+msg_bad_request = {
+    SearchModel: "Echec de création du profile de recherche. Le nom est manquant.",
+    Analyzer: "Echec de création de l'analyseur. Le nom de l'analyseur est manquant."
+}
 
+msg_conflit = {
+    SearchModel: "Echec de création du profile de recherche. Le nom doit etre unique.",
+    Analyzer: "Echec de création de l'analyseur. Le nom de l'analyseur doit etre unique."
+}
 
-def refresh_search_model(mdl_name, ctx_name_l):
-    """
-        Mise à jour des aliases dans ElasticSearch.
-    """
+def is_unique(model, param):
+    return model.objects.filter(**param).count() == 0
 
-    body = {"actions": []}
-
-    for index in elastic_conn.get_indices_by_alias(name=mdl_name):
-        body["actions"].append({"remove": {"index": index, "alias": mdl_name}})
-
-    for context in iter(ctx_name_l):
-        for index in elastic_conn.get_indices_by_alias(name=context):
-            body["actions"].append({"add": {"index": index, "alias": mdl_name}})
-
-    elastic_conn.update_aliases(body)
-
-def get_param(request, param):
-    """
-        Retourne la valeur d'une clé param presente dans une requete GET ou POST.
-    """
-    if request.method == "GET":
-        if param in request.GET:
-            return request.GET[param]
-    elif request.method == "POST":
-        try:
-            param_read = request.POST.get(param, request.GET.get(param))
-        except KeyError as e:
-            return None
-        return param_read
-
-
-def read_params_SM(data):
-
-    items = {"indices" : [] if ("indices" not in data) else data["indices"],
-            "config" : {} if ("config" not in data) else data["config"]
-    }
-    items = utils.clean_my_obj(items)
-    return items["indices"], items["config"]
-
-
-def get_search_model(name, user_rq, config,  method):
-
-    sm = None
+def create_objects(model, params):
     error = None
-    if method == 'POST':
+    new_obj = None
+
+    if is_unique(model, {"name": params["name"]}):
         try:
-            sm, created = SearchModel.objects.get_or_create(name=name,
-                                                            defaults={"user":user_rq,
-                                                                     "config":config})
+            new_obj = model.objects.create(**params)
+        except:
+            raise ValueError("Echec de la creation de {}".format(model))
+    else:
+        error = JsonResponse({"error": msg_conflit[model]}, status=409)
 
-        except ValidationError as e:
-            error = JsonResponse({"error": e.message}, status=409)
-        if created is False:
-            error = JsonResponse(data={"error": "Conflict"}, status=409)
+    return new_obj, error
 
-    elif method == 'PUT':
+def get_obj_list(model, liste_name):
+    objects = []
+    for obj_name in liste_name:
         try:
-            sm = SearchModel.objects.get(name=name)
-        except SearchModel.DoesNotExist:
-            sm = None
-            error = JsonResponse({
-                        "error":
-                            "Modification du modèle de recherche impossible. "
-                            "Le modèle de recherche '{}' n'existe pas. ".format(name)
-                        }, status=404)
-
-        if not error and sm.user != user_rq:
-            sm = None
-            error = JsonResponse({
-                        "error":
-                            "Modification du modèle de recherche impossible. "
-                            "Son usage est réservé."}, status=403)
-    return sm, error
-
-
-def get_contexts_obj(contexts_clt, user):
-
-    contexts_obj = []
-    for context_name in contexts_clt:
-        try:
-            context = Context.objects.get(name=context_name)
-        except Context.DoesNotExist:
+            obj = model.objects.get(name=obj_name)
+        except ObjectDoesNotExist:
             raise
-        try:
-            search_model_context_task(context.pk, user)
-        except MultiTaskError:
-            raise
-        contexts_obj.append(context)
-    return contexts_obj
+        objects.append(obj)
+    return objects
 
 
-def set_search_model_contexts(search_model, contexts_obj, contexts_clt, request, config=None):
-    response = None
-
-    if request.method == "POST":
-        search_model.context.set(contexts_obj)
-        search_model.save()
-        response = JsonResponse(data={}, status=201)
-        response['Location'] = '{0}{1}'.format(request.build_absolute_uri(), search_model.name)
-
-        if len(contexts_clt) > 0:
-            try:
-                refresh_search_model(search_model.name, contexts_clt)
-            except ValueError:
-                response = JsonResponse({
-                    "error": "La requête a été envoyée à un serveur qui n'est pas capable de produire une réponse."
-                             "(par exemple, car une connexion a été réutilisée)."}, status=421)
-
-    if request.method == "PUT":
-        search_model.context.clear()
-        search_model.context.set(contexts_obj)
-        search_model.config = config
-        search_model.save()
-        response = JsonResponse({}, status=204)
-
-        if len(contexts_clt) > 0:
-            try:
-                refresh_search_model(search_model.name, contexts_clt)
-            except ValueError:
-                response = JsonResponse({
-                    "error": "La requête a été envoyée à un serveur qui n'est pas capable de produire une réponse."
-                             "(par exemple, car une connexion a été réutilisée)."}, status=421)
-
-    return response
-
-
-def read_name(data, location="body"):
-    name = None
-    if location == "body":
-        if "name" not in data or data["name"] == "":
-            return None
-        try:
-            name = search("^[a-z0-9_]{2,100}$", data["name"])
-            name = name.group(0)
-        except AttributeError:
-            return None
-    if location == "url":
-        name = (data.endswith('/') and data[:-1] or data)
+def check_name(data):
+    name = (data.endswith('/') and data[:-1] or data)
+    try:
+        name = search("^[a-z0-9_]{2,100}$", name)
+        name = name.group(0)
+    except AttributeError:
+        return None
     return name
+
 
 def check_body_data(data, model):
 
     if model is SearchModel:
         items = {"indices" : [] if ("indices" not in data) else data["indices"],
                 "config" : {} if ("config" not in data) else data["config"],
-                 "name" : None if ("name" not in data) else data["name"]
+                 "name" : None if ("name" not in data) else check_name(data["name"])
         }
-        if items["name"]:
-            try:
-                name = search("^[a-z0-9_]{2,100}$", items["name"])
-                items["name"] = name.group(0)
-            except AttributeError:
-                return None
 
+    if model is Analyzer:
+        items = {"tokenizer": None if ("tokenizer" not in data) else data["tokenizer"],
+                 "filter": {} if ("filters" not in data) else data["filters"],
+                 "config": {} if ("config" not in data) else data["config"],
+                 "name": None if ("name" not in data) else check_name(data["name"])
+                 }
     items = utils.clean_my_obj(items)
+
     return items
 
-def read_request(model, request, params=None):
 
-    user = utils.get_user_or_401(request)
+def logged_or_401(request):
     error = None
-    contexts_clt = None
-    config_clt = None
-    name = None
+
+    user = utils.UserAuthenticate(request)
+    if user() is None:
+        response = HttpResponse()
+        response.status_code = 401
+        response["WWW-Authenticate"] = 'Basic realm="%s"' % "Basic Auth Protected"
+        error = response
+
+    return user, error
+
+def read_request(model, request):
+
+
+    items = None
+
+    user, error = logged_or_401(request)
+    if error:
+        return user, items, error
+
 
     if "application/json" not in request.content_type:
         error = JsonResponse({"Error": MSG_406}, status=406)
     else:
         data = json.loads(request.body.decode("utf-8"))
-        print(data)
+
         if model is SearchModel:
+            items = check_body_data(data, model)
 
-            check_body_data(data, model)
 
-            # SearchModelID/put
-            if params and "name" in params:
-                name = read_name(params["name"], location="url")
-                contexts_clt, config_clt = read_params_SM(data)
+        if model is Analyzer:
+            items = check_body_data(data, model)
+            if not items["name"]:
+                error = JsonResponse({"Error": msg_bad_request[model]}, status=400)
 
-            # SearchModel/post
-            else:
-                name = read_name(data)
-                contexts_clt, config_clt = read_params_SM(data)
+    return user, items, error
 
-    return user, contexts_clt, config_clt, name, error
+def read_url_params(request):
+
+    url = request.build_absolute_uri()
+    return urlparse.parse_qs(urlparse.urlparse(url).query)
+
+
+def located_response(request, obj_id):
+    response = JsonResponse(data={}, status=201)
+    response["Location"] = "{}{}".format(request.build_absolute_uri(), obj_id)
+    return response

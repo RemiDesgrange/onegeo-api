@@ -7,6 +7,7 @@ from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 
+from .factory import *
 from .. import utils
 from ..exceptions import JsonError
 from ..models import Filter, Analyzer, Tokenizer
@@ -23,49 +24,47 @@ MSG_406 = "Le format demandé n'est pas pris en charge. "
 class AnalyzerView(View):
 
     def get(self, request):
-        user = utils.get_user_or_401(request)
-        if isinstance(user, HttpResponse):
-            return user
+
+        user, error = logged_or_401(request)
+        if error:
+            return error
         return JsonResponse(utils.get_objects(user(), Analyzer), safe=False)
 
     @transaction.atomic
     def post(self, request):
-        user = utils.get_user_or_401(request)
-        if isinstance(user, HttpResponse):
-            return user
 
-        if "application/json" not in request.content_type:
-            return JsonResponse({"error": MSG_406}, status=406)
-        data = request.body.decode('utf-8')
-        body_data = json.loads(data)
-        name = utils.read_name(body_data)
-        if name is None:
-            return JsonResponse({"error": "Echec de création de l'analyseur. Le nom de l'analyseur est manquant."}, status=400)
-        if Analyzer.objects.filter(name=name).count() > 0:
-            return JsonResponse({"error": "Echec de la création de l'analyseur. Un analyseur portant le même nom existe déjà. "}, status=409)
+        # READ REQUEST DATA
+        user, items, error = read_request(Analyzer, request)
+        if error:
+            return error
 
-        tokenizer = "tokenizer" in body_data and body_data["tokenizer"] or None
-        filters = "filters" in body_data and body_data["filters"] or []
+        items['user'] = user()
+        analyzer, error = create_objects(Analyzer, items)
+        if error:
+            return error
 
-        analyzer, created = Analyzer.objects.get_or_create(user=user(), name=name)
-        if created and len(filters) > 0:
-            for f in filters:
-                try:
-                    flt = Filter.objects.get(name=f)
-                    analyzer.filter.add(flt)
-                    analyzer.save()
-                except Filter.DoesNotExist:
-                    return JsonResponse({"error": "Echec de création de l'analyseur. La liste contient un ou plusieurs filtres n'existant pas. "}, status=400)
-
-        if created and tokenizer is not None:
+        if "filter" in items:
             try:
-                tkn_chk = Tokenizer.objects.get(name=tokenizer)
-                analyzer.tokenizer = tkn_chk
-                analyzer.save()
-            except Tokenizer.DoesNotExist:
-                return JsonResponse({"error": "Echec de création de l'analyseur: Le tokenizer n'existe pas. "}, status=400)
-        status = created and 201 or 409
-        return utils.format_json_get_create(request, created, status, analyzer.name)
+                filters = get_obj_list(Filter, items["filter"])
+            except ObjectDoesNotExist:
+                return JsonResponse(
+                    {"error": "Echec de création de l'analyseur."
+                     "La liste contient un ou plusieurs filtres n'existant pas. "},
+                    status=400)
+            for f in filters:
+                analyzer.filter.add(f)
+
+        if "tokenizer" in items:
+            try:
+                token = get_obj_list(Tokenizer, items["tokenizer"])
+            except ObjectDoesNotExist:
+                return JsonResponse(
+                    {"error": "Echec de création de l'analyseur."
+                              "Le tokenizer n'existe pas. "}, status=400)
+            analyzer.tokenizer = token
+
+        analyzer.save()
+        return located_response(request, analyzer.name)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
