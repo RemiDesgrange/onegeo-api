@@ -201,7 +201,7 @@ class SearchModelView(View):
     def post(self, request):
 
         # READ REQUEST DATA
-        user, contexts_clt, config_clt, name, error = read_request(request)
+        user, contexts_clt, config_clt, name, error = read_request(SearchModel, request)
         if error:
             return error
 

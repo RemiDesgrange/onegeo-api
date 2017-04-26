@@ -157,9 +157,10 @@ def read_request(model, request, params=None):
     else:
         data = json.loads(request.body.decode("utf-8"))
 
-        # SearchModel/post
-        if model is SearchModel and params['name']:
-            name = read_name_SM(data, request.method, params['name'])
-            contexts_clt, config_clt = read_params_SM(data)
+        # SearchModelID/put
+        if model is SearchModel:
+            if params['name']:
+                name = read_name_SM(data, request.method, params['name'])
+                contexts_clt, config_clt = read_params_SM(data)
 
     return user, contexts_clt, config_clt, name, error

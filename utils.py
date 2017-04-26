@@ -32,7 +32,7 @@ def format_resource(s, r):
              "location": "/sources/{}/resources/{}".format(s.id, r.id),
              "name": r.name,
              "columns": r.columns,
-             "indices": format_context(s, r, ctx)["location"]}
+             "index": format_context(s, r, ctx)["location"]}
     except Context.DoesNotExist:
         d = {"id": r.id,
              "location": "/sources/{}/resources/{}".format(s.id, r.id),
