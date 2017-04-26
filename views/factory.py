@@ -53,15 +53,6 @@ def get_param(request, param):
             return None
         return param_read
 
-def read_name_SM(data, method, name_url):
-
-    name = None
-    if method == 'POST':
-        name = utils.read_name(data)
-    elif method == 'PUT':
-        name = (name_url.endswith('/') and name_url[:-1] or name_url)
-    return name
-
 
 def read_params_SM(data):
 
@@ -76,7 +67,6 @@ def get_search_model(name, user_rq, config,  method):
 
     sm = None
     error = None
-    print(config)
     if method == 'POST':
         try:
             sm, created = SearchModel.objects.get_or_create(name=name,
@@ -173,6 +163,21 @@ def read_name(data, location="body"):
         name = (data.endswith('/') and data[:-1] or data)
     return name
 
+def check_body_data(data, model):
+
+    if model is SearchModel:
+        items = {"indices" : [] if ("indices" not in data) else data["indices"],
+                "config" : {} if ("config" not in data) else data["config"],
+                 "name" : None if ("name" not in data) else data["name"]
+        }
+        try:
+            name = search("^[a-z0-9_]{2,100}$", data["name"])
+            name = name.group(0)
+        except AttributeError:
+            return None
+
+    items = utils.clean_my_obj(items)
+    return items
 
 def read_request(model, request, params=None):
 
@@ -186,7 +191,7 @@ def read_request(model, request, params=None):
         error = JsonResponse({"Error": MSG_406}, status=406)
     else:
         data = json.loads(request.body.decode("utf-8"))
-
+        print(data)
         if model is SearchModel:
             # SearchModelID/put
             if params and "name" in params:
