@@ -8,6 +8,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.generic import View
 from importlib import import_module
 
+from .factory import *
 from .. import utils
 from ..elasticsearch_wrapper import elastic_conn
 from ..exceptions import JsonError, MultiTaskError
@@ -170,21 +171,21 @@ def set_search_model_contexts(search_model, contexts_obj, contexts_clt, request,
     return response
 
 
-def read_request(request, name_url=None):
-
-    user = utils.get_user_or_401(request)
-    error = None
-    contexts_clt = None
-    config_clt = None
-    name = None
-
-    if "application/json" not in request.content_type:
-        error = JsonResponse({"Error": MSG_406}, status=406)
-    else:
-        data = json.loads(request.body.decode("utf-8"))
-        name = read_name_SM(data, request.method, name_url)
-        contexts_clt, config_clt = read_params_SM(data)
-    return user, contexts_clt, config_clt, name, error
+# def read_request(request, name_url=None):
+#
+#     user = utils.get_user_or_401(request)
+#     error = None
+#     contexts_clt = None
+#     config_clt = None
+#     name = None
+#
+#     if "application/json" not in request.content_type:
+#         error = JsonResponse({"Error": MSG_406}, status=406)
+#     else:
+#         data = json.loads(request.body.decode("utf-8"))
+#         name = read_name_SM(data, request.method, name_url)
+#         contexts_clt, config_clt = read_params_SM(data)
+#     return user, contexts_clt, config_clt, name, error
 
 
 @method_decorator(csrf_exempt, name="dispatch")
