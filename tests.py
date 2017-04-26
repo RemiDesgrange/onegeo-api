@@ -20,6 +20,7 @@ class SimpleTest(TestCase):
 
         self.user = User.objects.create_user(
             username='user1', email='user_test@testing.com', password='passpass')
+
         # creer user2 et objets liés pour tester accés
         self.user2 = User.objects.create_user(
             username='user2', email='user_test@testing.com', password='passpass')
@@ -53,28 +54,26 @@ class SimpleTest(TestCase):
         Tokenizer.objects.create(name="nametoken_usr2", user=self.user2)
 
 
-
-
-
-        #########################
-        #        SOURCE         #
-        #########################
+    #########################
+    #        SOURCE         #
+    #########################
     def test_source_get__with_anonymous_user(self):
-        request = self.factory.get('/api/sources/')
+        rf = self.factory
+        request = rf.get('/api/sources/')
         request.user = AnonymousUser()
         response = SourceView.as_view()(request)
         self.assertEqual(response.status_code, 401)
 
 
     def test_source_get(self):
-        request = self.factory.get('/api/sources/')
+        rf = self.factory
+        request = rf.get('/api/sources/')
 
         # l'authetification passe par une classe qui vérifie le contenu de META[]
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M=' #base64(user1:passpass)
 
         response = SourceView.as_view()(request)
         self.assertEqual(response.status_code, 200)
-
 
 
     def test_source_post_create(self):
@@ -84,7 +83,8 @@ class SimpleTest(TestCase):
                                  "mode": "pdf",
                                  "name": "lyvia0"
                                })
-        request = self.factory.post('/api/sources/',
+        rf = self.factory
+        request = rf.post('/api/sources/',
                                     data=json_str,
                                     content_type="application/json")
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
@@ -101,7 +101,9 @@ class SimpleTest(TestCase):
     def test_source_id_get(self):
 
         id = Source.objects.get(user=self.user, name=self.name_source_legit).id
-        request2 = self.factory.get('/api/sources/{}'.format(id))
+
+        rf = self.factory
+        request2 = rf.get('/api/sources/{}'.format(id))
         # l'authetification passe par une classe qui vérifie le contenu de META[]
         request2.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='  # base64(user1:passpass)
 
@@ -111,7 +113,7 @@ class SimpleTest(TestCase):
 
 
     def test_source_delete(self):
-        rf = RequestFactory()
+        rf = self.factory
 
         # Create source
         json_str = json.dumps({"uri": "file:///LYVIA",
@@ -128,7 +130,7 @@ class SimpleTest(TestCase):
 
         src = Source.objects.get(user=self.user, name="lyvia1")
 
-        rf2 = RequestFactory()
+        rf2 = self.factory
         request2 = rf2.delete('/api/sources/{}'.format(src.pk))
         request2.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
 
@@ -136,9 +138,9 @@ class SimpleTest(TestCase):
         self.assertEqual(response2.status_code, 204)
 
 
-        #########################
-        #        CONTEXTE       #
-        #########################
+    #########################
+    #        CONTEXTE       #
+    #########################
     def test_contexts_post(self):
         # Utilisation d'une source dont la creation est garentie et de sa resource liée
         # Les tests étant réaliser sans garenti d'ordre, on s'assure d'avoir un couple source/resource disponible
@@ -151,7 +153,8 @@ class SimpleTest(TestCase):
                              "reindex_frequency": "daily"
                              }
         json_str = json.dumps(ctx_post_data)
-        request = self.factory.post('/api/contexts/',
+        rf = self.factory
+        request = rf.post('/api/contexts/',
                                     data=json_str,
                                     content_type="application/json")
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
@@ -166,9 +169,11 @@ class SimpleTest(TestCase):
     def test_context_id_get(self):
         src = Source.objects.get(user=self.user, name=self.name_source_legit)
         rsrc = Resource.objects.filter(source=src)
+        print([r.name for r in rsrc])
         Context.objects.create(resource=rsrc[0], name="ctx_name", clmn_properties={"ppt1":"val1", "ppt2":"val2"})
 
-        request = self.factory.get('/api/contexts/{}'.format(rsrc[0].id))
+        rf = self.factory
+        request = rf.get('/api/contexts/{}'.format(rsrc[0].id))
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
 
         response = ContextIDView.as_view()(request, id=str(rsrc[0].id))
@@ -176,7 +181,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_context_id_delete(self):
-        rf = RequestFactory()
+        rf = self.factory
         src = Source.objects.get(user=self.user, name=self.name_source_legit)
         rsrc = Resource.objects.filter(source=src)
         Context.objects.create(resource=rsrc[0], name="ctx_name2", clmn_properties={"ppt1": "val1", "ppt2": "val2"})
@@ -188,7 +193,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
     def test_context_id_delete_conflict_user(self):
-        rf = RequestFactory()
+        rf = self.factory
         user_alt = User.objects.create_user(
             username='user_alt', email='user_test@testing.com', password='passpass')
 
@@ -210,7 +215,7 @@ class SimpleTest(TestCase):
     #########################
     def test_filter_get_authent(self):
 
-        rf1 = RequestFactory()
+        rf1 = self.factory
         request1 = rf1.get('/api/filters')
         request1.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='  # base64(user1:passpass)
         response1 = FilterView.as_view()(request1)
@@ -218,7 +223,7 @@ class SimpleTest(TestCase):
 
     def test_filter_get_anonyme(self):
 
-        rf2 = RequestFactory()
+        rf2 = self.factory
         request1 = rf2.get('/api/filters')
         request1.META['HTTP_AUTHORIZATION'] = ''
         response1 = FilterView.as_view()(request1)
@@ -227,7 +232,7 @@ class SimpleTest(TestCase):
 
 
     def test_filter_post(self):
-        rf = RequestFactory()
+        rf = self.factory
 
         data = {"config": {"conf1": "val1"},
                 "name": "namefilter3"}
@@ -241,7 +246,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 201)
 
     def test_filter_post(self):
-        rf = RequestFactory()
+        rf = self.factory
 
         data = {"config": {"conf1": "val1"},
                 "name": "namefilter_anonyme"}
@@ -256,8 +261,8 @@ class SimpleTest(TestCase):
 
 
     def test_filter_post_bad_params(self):
-        rf = RequestFactory()
 
+        rf = self.factory
         data = {"config":{"conf1":"val1"},
                 "name":"namefilter"}
         request = rf.post('/api/filters/',
@@ -279,8 +284,9 @@ class SimpleTest(TestCase):
 
     def test_filter_id_get(self):
 
+        rf = self.factory
         name = "namefilter"
-        request = self.factory.get('/api/filters/{}'.format(name))
+        request = rf.get('/api/filters/{}'.format(name))
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
 
         response = FilterIDView.as_view()(request, name=str(name))
@@ -288,9 +294,9 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 200)
 
     def test_filter_id_get_error_name(self):
-
+        rf = self.factory
         name = "filter_unknown"
-        request = self.factory.get('/api/filters/{}'.format(name))
+        request = rf.get('/api/filters/{}'.format(name))
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
 
         response = FilterIDView.as_view()(request, name=str(name))
@@ -300,7 +306,7 @@ class SimpleTest(TestCase):
 
 
     def test_filter_id_get_anonyme(self):
-        rf = RequestFactory()
+        rf = self.factory
         request = rf.get('/api/filters/{}'.format(self.filter.name))
         request.META['HTTP_AUTHORIZATION'] = ''
         response = FilterIDView.as_view()(request, name=str(self.filter.name))
@@ -312,7 +318,7 @@ class SimpleTest(TestCase):
     #       ANALYSEUR       #
     #########################
     def test_analyzer_get(self):
-        rf = RequestFactory()
+        rf = self.factory
         request = rf.get('/api/analyzers')
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='  # base64(user1:passpass)
         response = AnalyzerView.as_view()(request)
@@ -320,7 +326,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_get_anonymous(self):
-        rf = RequestFactory()
+        rf = self.factory
         request = rf.get('/api/analyzers')
         request.META['HTTP_AUTHORIZATION'] = ''
         response = AnalyzerView.as_view()(request)
@@ -328,7 +334,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_post(self):
-        rf = RequestFactory()
+        rf = self.factory
 
         # Utilisation du token_legit
         data = {"name":"daadada",
@@ -345,7 +351,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_post_anonymous(self):
-        rf1 = RequestFactory()
+        rf1 = self.factory
 
         # Utilisation du token_legit
         data = {"name": "daadada",
@@ -362,7 +368,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_post_error_filters(self):
-        rf1 = RequestFactory()
+        rf1 = self.factory
 
         # Utilisation du token_legit mais d'un mauvais filtre
         data = {"name":"daadada",
@@ -379,7 +385,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_post_error_token(self):
-        rf1 = RequestFactory()
+        rf1 = self.factory
 
         # Utilisation de filtres correct mais d'un mauvais token
         data = {"name": "daadada",
@@ -396,7 +402,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_id_get(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nameanalyzer"
         request = rf.get('/api/analyzers/{}'.format(name))
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
@@ -405,7 +411,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_id_get_anonymous(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nameanalyzer"
         request = rf.get('/api/analyzers/{}'.format(name))
         request.META['HTTP_AUTHORIZATION'] = ''
@@ -414,7 +420,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_id_delete(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nameanalyzerdelete"
         request = rf.delete('/api/analyzers/{}'.format(name))
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
@@ -423,7 +429,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_id_delete(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nameanalyzerdelete"
         request = rf.delete('/api/analyzers/{}'.format(name))
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
@@ -432,7 +438,7 @@ class SimpleTest(TestCase):
 
 
     def test_analyzer_id_put(self):
-        rf = RequestFactory()
+        rf = self.factory
 
         data = {"name": "daadada",
                 "filters": ["namefilter", "namefilter2"],
@@ -448,7 +454,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
     def test_analyzer_id_put_anonymous(self):
-        rf = RequestFactory()
+        rf = self.factory
 
         data = {"name": "daadada",
                 "filters": ["namefilter", "namefilter2"],
@@ -464,7 +470,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_analyzer_id_put_error_filter(self):
-        rf = RequestFactory()
+        rf = self.factory
 
         data = {"name": "daadada",
                 "filters": ["namefilter", "namefilter_unkown"],
@@ -480,7 +486,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_analyzer_id_put_error_token(self):
-        rf = RequestFactory()
+        rf = self.factory
 
         data = {"name": "daadada",
                 "filters": ["namefilter", "namefilter2"],
@@ -501,7 +507,7 @@ class SimpleTest(TestCase):
     #       TOKENIZER      #
     ########################
     def test_token_get(self):
-        rf1 = RequestFactory()
+        rf1 = self.factory
         request1 = rf1.get('/api/tokenizers')
         request1.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='  # base64(user1:passpass)
         response1 = TokenizerView.as_view()(request1)
@@ -509,7 +515,7 @@ class SimpleTest(TestCase):
 
 
     def test_token_get_anonymous(self):
-        rf1 = RequestFactory()
+        rf1 = self.factory
         request1 = rf1.get('/api/tokenizers')
         request1.META['HTTP_AUTHORIZATION'] = ''
         response1 = TokenizerView.as_view()(request1)
@@ -517,7 +523,7 @@ class SimpleTest(TestCase):
 
 
     def test_token_post(self):
-        re = RequestFactory()
+        re = self.factory
 
         data = {"config": {"conf1": "val1"},
                 "name": "nametoken2"}
@@ -532,7 +538,7 @@ class SimpleTest(TestCase):
 
 
     def test_token_post_anonymous(self):
-        re = RequestFactory()
+        re = self.factory
 
         data = {"config": {"conf1": "val1"},
                 "name": "nametoken2"}
@@ -547,7 +553,7 @@ class SimpleTest(TestCase):
 
 
     def test_token_post_name_double(self):
-        re = RequestFactory()
+        re = self.factory
 
         data = {"config": {"conf1": "val1"},
                 "name": "nametoken"}
@@ -562,7 +568,7 @@ class SimpleTest(TestCase):
 
 
     def test_token_id_get(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nametoken"
         request = rf.get('/api/tokenizers/{}'.format(name),
                         content_type="application/json")
@@ -572,7 +578,7 @@ class SimpleTest(TestCase):
 
 
     def test_token_id_get_anonymouse(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nametoken"
         request = rf.get('/api/tokenizers/{}'.format(name),
                         content_type="application/json")
@@ -581,7 +587,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 401)
 
     def test_token_id_delete(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nametokendelete"
         request = rf.delete('/api/tokenizers/{}'.format(name))
         request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
@@ -590,7 +596,7 @@ class SimpleTest(TestCase):
 
 
     def test_token_id_put(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nametoken"
         data = {"config": {"conf1": "val1"}}
 
@@ -602,7 +608,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
     def test_token_id_put_wrong_usr(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nametoken_usr2"
         data = {"config": {"conf1": "val1"}}
 
@@ -614,7 +620,7 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 403)
 
     def test_token_id_put_anonymouse(self):
-        rf = RequestFactory()
+        rf = self.factory
         name = "nametoken"
         data = {"config": {"conf1": "val1"}}
 
@@ -626,110 +632,104 @@ class SimpleTest(TestCase):
         self.assertEqual(response.status_code, 401)
 
 
-
-
-
-
-
-
-    def test_action_view_post(self):
-        rf = RequestFactory()
-        src = Source.objects.get(user=self.user, name=self.name_source_legit)
-        rsrc = Resource.objects.filter(source=src)
-        ppt_list = [{"name": "file", "type": "pdf", "occurs": [1, 1]},
-                    {"name": "/LOCALISATION", "type": None, "occurs": [0, 1]},
-                    {"name": "/DOCUMENT_REF", "type": None, "occurs": [0, 1]},
-                    {"name": "/DOSSIER_REF", "type": None, "occurs": [0, 1]},
-                    {"name": "/Title", "type": None, "occurs": [0, 1]},
-                    {"name": "/CreationDate", "type": None, "occurs": [0, 1]},
-                    {"name": "/DateSeance", "type": None, "occurs": [0, 1]}]
-        Context.objects.create(resource=rsrc[0], name="ctx_name3", clmn_properties=ppt_list)
-        action_post_data = {"index": "ctx_name3",
-                            "type": "rebuild"
-                            }
-        json_str = json.dumps(action_post_data)
-        request = rf.post('/api/action/',
-                                    data=json_str,
-                                    content_type="application/json")
-        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
-
-        response = ActionView.as_view()(request)
-        self.assertEqual(response.status_code, 202)
-
-    def test_search_model_post(self):
-        rf = RequestFactory()
-        model_post_data = {"config":{"daadada":"dedededed"},
-                           "contexts":["namecontext"],
-                           "name":"modelname"
-                           }
-        json_str = json.dumps(model_post_data)
-        request = rf.post('/api/models/',
-                                    data=json_str,
-                                    content_type="application/json")
-        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
-        response = SearchModelView.as_view()(request)
-        self.assertEqual(response.status_code, 201)
-
-
-        # Creation context avec le meme nom que le model
-        src = Source.objects.get(user=self.user, name=self.name_source_legit)
-        rsrc = Resource.objects.filter(source=src)
-        ctx_post_data = {"name": "modelname",
-                         "resource": "/sources/{}/resources/{}".format(src.id, rsrc[0].id),
-                         "reindex_frequency": "daily"
-                         }
-        json_str = json.dumps(ctx_post_data)
-        request = rf.post('/api/contexts/',
-                                    data=json_str,
-                                    content_type="application/json")
-        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
-
-        response = ContextView.as_view()(request)
-        self.assertEqual(response.status_code, 409)
-
-
-    def test_search_view_post(self):
-        re = RequestFactory()
-
-        # context
-        src = Source.objects.get(user=self.user, name=self.name_source_legit)
-        rsrc = Resource.objects.filter(source=src)
-
-        ctx_post_data = {"name": "ctxname",
-                         "resource": "/sources/{}/resources/{}".format(src.id, rsrc[0].id),
-                         "reindex_frequency": "daily"
-                         }
-        request = re.post('/api/contexts/',
-                            data=json.dumps(ctx_post_data),
-                            content_type="application/json")
-        request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
-        response = ContextView.as_view()(request)
-        self.assertEqual(response.status_code, 201)
-
-
-        # search model
-        model_post_data = {"config": {"daadada": "dedededed"},
-                           "contexts": ["ctxname"],
-                           "name": "modelname"
-                           }
-        request2 = re.post('/api/models/',
-                          data=json.dumps(model_post_data),
-                          content_type="application/json")
-        request2.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
-        response2 = SearchModelView.as_view()(request2)
-        self.assertEqual(response2.status_code, 201)
-
-
-        # Search:
-        sm = SearchModel.objects.get(name="modelname")
-
-        ## request sans mode == 501
-        request3 = re.post('/api/models/{}/search/'.format(sm.name),
-                          {"mode" : ""},
-                          content_type="application/json")
-        request3.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
-        response3 = SearchView.as_view()(request3, name=(str(sm.name)))
-        self.assertEqual(response3.status_code, 501)
+    # def test_action_view_post(self):
+    #     rf = RequestFactory()
+    #     src = Source.objects.get(user=self.user, name=self.name_source_legit)
+    #     rsrc = Resource.objects.filter(source=src)
+    #     ppt_list = [{"name": "file", "type": "pdf", "occurs": [1, 1]},
+    #                 {"name": "/LOCALISATION", "type": None, "occurs": [0, 1]},
+    #                 {"name": "/DOCUMENT_REF", "type": None, "occurs": [0, 1]},
+    #                 {"name": "/DOSSIER_REF", "type": None, "occurs": [0, 1]},
+    #                 {"name": "/Title", "type": None, "occurs": [0, 1]},
+    #                 {"name": "/CreationDate", "type": None, "occurs": [0, 1]},
+    #                 {"name": "/DateSeance", "type": None, "occurs": [0, 1]}]
+    #     Context.objects.create(resource=rsrc[0], name="ctx_name3", clmn_properties=ppt_list)
+    #     action_post_data = {"index": "ctx_name3",
+    #                         "type": "rebuild"
+    #                         }
+    #     json_str = json.dumps(action_post_data)
+    #     request = rf.post('/api/action/',
+    #                                 data=json_str,
+    #                                 content_type="application/json")
+    #     request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+    #
+    #     response = ActionView.as_view()(request)
+    #     self.assertEqual(response.status_code, 202)
+    #
+    # def test_search_model_post(self):
+    #     rf = RequestFactory()
+    #     model_post_data = {"config":{"daadada":"dedededed"},
+    #                        "contexts":["namecontext"],
+    #                        "name":"modelname"
+    #                        }
+    #     json_str = json.dumps(model_post_data)
+    #     request = rf.post('/api/models/',
+    #                                 data=json_str,
+    #                                 content_type="application/json")
+    #     request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+    #     response = SearchModelView.as_view()(request)
+    #     self.assertEqual(response.status_code, 201)
+    #
+    #
+    #     # Creation context avec le meme nom que le model
+    #     src = Source.objects.get(user=self.user, name=self.name_source_legit)
+    #     rsrc = Resource.objects.filter(source=src)
+    #     ctx_post_data = {"name": "modelname",
+    #                      "resource": "/sources/{}/resources/{}".format(src.id, rsrc[0].id),
+    #                      "reindex_frequency": "daily"
+    #                      }
+    #     json_str = json.dumps(ctx_post_data)
+    #     request = rf.post('/api/contexts/',
+    #                                 data=json_str,
+    #                                 content_type="application/json")
+    #     request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+    #
+    #     response = ContextView.as_view()(request)
+    #     self.assertEqual(response.status_code, 409)
+    #
+    #
+    # def test_search_view_post(self):
+    #     re = RequestFactory()
+    #
+    #     # context
+    #     src = Source.objects.get(user=self.user, name=self.name_source_legit)
+    #     rsrc = Resource.objects.filter(source=src)
+    #
+    #     ctx_post_data = {"name": "ctxname",
+    #                      "resource": "/sources/{}/resources/{}".format(src.id, rsrc[0].id),
+    #                      "reindex_frequency": "daily"
+    #                      }
+    #     request = re.post('/api/contexts/',
+    #                         data=json.dumps(ctx_post_data),
+    #                         content_type="application/json")
+    #     request.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+    #     response = ContextView.as_view()(request)
+    #     self.assertEqual(response.status_code, 201)
+    #
+    #
+    #     # search model
+    #     model_post_data = {"config": {"daadada": "dedededed"},
+    #                        "contexts": ["ctxname"],
+    #                        "name": "modelname"
+    #                        }
+    #     request2 = re.post('/api/models/',
+    #                       data=json.dumps(model_post_data),
+    #                       content_type="application/json")
+    #     request2.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+    #     response2 = SearchModelView.as_view()(request2)
+    #     self.assertEqual(response2.status_code, 201)
+    #
+    #
+    #     # Search:
+    #     sm = SearchModel.objects.get(name="modelname")
+    #
+    #     ## request sans mode == 501
+    #     request3 = re.post('/api/models/{}/search/'.format(sm.name),
+    #                       {"mode" : ""},
+    #                       content_type="application/json")
+    #     request3.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
+    #     response3 = SearchView.as_view()(request3, name=(str(sm.name)))
+    #     self.assertEqual(response3.status_code, 501)
 
         ## request avec mode -- a completer avec données elastic search pour data
         # request4 = re.post('/api/models/{}/search/'.format(sm.name),
@@ -738,5 +738,4 @@ class SimpleTest(TestCase):
         # request4.META['HTTP_AUTHORIZATION'] = 'Basic dXNlcjE6cGFzc3Bhc3M='
         # response4 = SearchView.as_view()(request4, name=(str(sm.name)))
         # self.assertEqual(response4.status_code, 200)
-
 

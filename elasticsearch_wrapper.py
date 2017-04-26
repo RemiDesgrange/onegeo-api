@@ -1,4 +1,3 @@
-import asyncio
 from elasticsearch import Elasticsearch
 from elasticsearch import exceptions as ElasticExceptions
 from threading import Thread
@@ -6,32 +5,37 @@ from uuid import uuid4
 
 from django.conf import settings
 
-from .tools import Singleton
 
+class Singleton(type):
 
-import json
+    __instances = {}
 
-PDF_BASE_DIR = settings.PDF_DATA_BASE_DIR
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls.__instances:
+            cls.__instances[cls] = super().__call__(*args, **kwargs)
+        return cls.__instances[cls]
 
 
 class ElasticWrapper(metaclass=Singleton):
 
     def __init__(self):
+
         self.conn = Elasticsearch([{'host': settings.ES_VAR['HOST']}])
         self.conn.cluster.health(wait_for_status='yellow', request_timeout=60)
 
-    def is_a_task_running(self):
-        response = self.conn.tasks.list(actions='indices:*')
-        if not response['nodes']:
-            return False
-        return True
+    # def is_a_task_running(self):
+    #
+    #     response = self.conn.tasks.list(actions='indices:*')
+    #     if not response['nodes']:
+    #         return False
+    #     return True
 
     def create_pipeline_if_not_exists(self, id):
 
         body = {'description': 'Pdf',
                 'processors': [{
                     'attachment': {
-                        'field': 'data',
+                        'field': 'raw_data',
                         'ignore_missing': True,
                         'indexed_chars': -1,
                         'properties': [
@@ -44,87 +48,81 @@ class ElasticWrapper(metaclass=Singleton):
                             'content_length',
                             'language']}}]}
 
-        # try:
-        #     self.conn.ingest.get_pipeline(id=id)
-        # except ElasticExceptions.NotFoundError as err:
         self.conn.ingest.put_pipeline(id=id, body=body)
 
     def create_or_replace_index(self, index, name, doc_type, body,
-                                collections=None, pipeline=None):
+                                collections=None, pipeline=None,
+                                succeed=None, failed=None, error=None):
 
-        # def reindex(index, name):
+        def rebuild(index, name, doc_type, collections, pipeline,
+                    succeed=None, failed=None, error=error):
 
-        #         indices = self.get_indices_by_alias(name)
-
-        #         if len(indices) < 1:
-        #             self.delete_index(index)
-        #             raise Exception('Hop hop hop.')
-        #         if len(indices) > 1:
-        #             raise Exception('Hop hop hop.')
-        #         old = indices[0]
-
-        #         self.reindex(old, index)
-        #         self.switch_aliases(index, name)
-
-        def rebuild(index, name, doc_type, collections, pipeline):
-            self.push_document(index, name, doc_type, collections, pipeline)
+            self.push_document(index, name, doc_type, collections, pipeline,
+                               succeed=succeed, failed=failed, error=error)
 
         try:
             self.conn.indices.create(index=index, body=body)
-        except:
-            raise
+        except Exception as err:
+            raise err
+
+        if collections:
+            rebuild(index, name, doc_type, collections, pipeline,
+                    succeed=succeed, failed=failed, error=error)
         else:
-            if collections:
-                rebuild(index, name, doc_type, collections, pipeline)
-            else:
-                raise Exception('TODO')
-                #reindex(index, name)
+            raise Exception('TODO')
 
     def delete_index(self, index):
+
         self.conn.indices.delete(index=index)
 
     def delete_index_by_alias(self, name):
+
         indices = self.get_indices_by_alias(name)
         for index in iter(indices):
             self.delete_index(index)
 
-    def push_document(self, index, name, doc_type, collections, pipeline):
-              
-        def callback(index, name, doc_type, collections, pipeline):
+    def push_document(self, index, name, doc_type, collections, pipeline,
+                      succeed=None, failed=None, error=None):
 
+        def target(index, name, doc_type, collections, pipeline,
+                   succeed=None, failed=None, error=None):
+
+            count = 0
             for document in collections:
                 params = {'body': document, 'doc_type': doc_type,
                           'id': str(uuid4())[0:7], 'index': index}
+
                 if pipeline is not None:
                     params.update({'pipeline': pipeline})
-
                 try:
                     self.conn.index(**params)
-                except ElasticExceptions.RequestError as err:
-                    self.delete_index(index)
                 except ElasticExceptions.SerializationError as err:
+                    error(str(err))
                     continue
-                except:
-                   self.delete_index(index)
+                except ElasticExceptions.TransportError as err:
+                    continue
+                except Exception as err:
+                    self.delete_index(index)
+                    return failed(str(err))
+                else:
+                    count += 1
+            else:
+                self.switch_aliases(index, name)
 
-            self.switch_aliases(index, name)
+                if count == 0:
+                    msg = 'Aucun document à indexer. '
+                if count == 1:
+                    msg = '1 document a été indexé avec succès. '
+                if count > 1:
+                    msg = '{0} documents ont été indexés avec succès. '.format(count)
 
-        thread = Thread(target=callback, args=(index, name, doc_type, collections, pipeline))
+                return succeed(msg)
+
+
+        thread = Thread(target=target,
+                        args=(index, name, doc_type, collections, pipeline),
+                        kwargs={'succeed': succeed, 'failed': failed, 'error': error})
         thread.start()
-
-    # def push_mapping(self, index, doc_type, body):
-
-    #     params = {'index': index, 'doc_type': doc_type, 'body': body}
-    #     self.conn.indices.put_mapping(**params)
-
-    # def push_settings(self, index, body):
-
-    #     self.conn.indices.put_settings(body=body, index=index)
-
-    def reindex(self, source, dest):
-
-        body = {'source': {'index': source}, 'dest': {'index': dest}}
-        res = self.conn.reindex(body=body)
 
     def switch_aliases(self, index, name):
         """Permute l'alias vers le nouvel index. """
@@ -132,22 +130,26 @@ class ElasticWrapper(metaclass=Singleton):
         body = {'actions': []}
 
         indices = self.get_indices_by_alias(name)
-
         for old_index in iter(indices):
+
             prev_aliases = self.get_aliases_by_index(old_index)
             for prev_alias in prev_aliases:
-                if prev_alias != name:
-                    body['actions'].append(
-                            {'add': {'index': index, 'alias': prev_alias}})
 
-            body['actions'].append(
-                            {'remove': {'index': old_index, 'alias': name}})
+                if prev_alias != name:
+                    body['actions'].append({'add': {
+                                                'index': index,
+                                                'alias': prev_alias}})
+
+            body['actions'].append({'remove': {
+                                        'index': old_index,
+                                        'alias': name}})
 
         self.conn.indices.put_alias(index=index, name=name)
-        body['actions'].append({'add': {'index': index, 'alias': name}})
+        body['actions'].append({'add': {
+                                    'index': index,
+                                    'alias': name}})
 
         self.update_aliases(body)
-
         for i in range(len(indices)):
             self.delete_index(indices[i])
 
@@ -176,7 +178,11 @@ class ElasticWrapper(metaclass=Singleton):
             raise ValueError(str(err))
 
     def search(self, index, body):
-        return self.conn.search(index=index, body=body)
+        try:
+            return self.conn.search(index=index, body=body)
+        except Exception as err:
+            # TODO: gérer les exceptions
+            raise Exception(str(err))
 
 
 elastic_conn = ElasticWrapper()
