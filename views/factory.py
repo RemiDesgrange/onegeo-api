@@ -1,4 +1,6 @@
 import json
+from re import search
+
 from django.core.exceptions import ValidationError
 from django.http import JsonResponse
 
@@ -37,6 +39,19 @@ def refresh_search_model(mdl_name, ctx_name_l):
 
     elastic_conn.update_aliases(body)
 
+def get_param(request, param):
+    """
+        Retourne la valeur d'une clé param presente dans une requete GET ou POST.
+    """
+    if request.method == "GET":
+        if param in request.GET:
+            return request.GET[param]
+    elif request.method == "POST":
+        try:
+            param_read = request.POST.get(param, request.GET.get(param))
+        except KeyError as e:
+            return None
+        return param_read
 
 def read_name_SM(data, method, name_url):
 
@@ -50,22 +65,22 @@ def read_name_SM(data, method, name_url):
 
 def read_params_SM(data):
 
-    items = {"contexts" : [] if ("contexts" not in data) else data["contexts"],
+    items = {"indices" : [] if ("indices" not in data) else data["indices"],
             "config" : {} if ("config" not in data) else data["config"]
     }
     items = utils.clean_my_obj(items)
-    return items["contexts"], items["config"]
+    return items["indices"], items["config"]
 
 
 def get_search_model(name, user_rq, config,  method):
 
     sm = None
     error = None
-
+    print(config)
     if method == 'POST':
         try:
             sm, created = SearchModel.objects.get_or_create(name=name,
-                                                            default={"user":user_rq,
+                                                            defaults={"user":user_rq,
                                                                      "config":config})
 
         except ValidationError as e:
@@ -144,6 +159,21 @@ def set_search_model_contexts(search_model, contexts_obj, contexts_clt, request,
     return response
 
 
+def read_name(data, location="body"):
+    name = None
+    if location == "body":
+        if "name" not in data or data["name"] == "":
+            return None
+        try:
+            name = search("^[a-z0-9_]{2,100}$", data["name"])
+            name = name.group(0)
+        except AttributeError:
+            return None
+    if location == "url":
+        name = (data.endswith('/') and data[:-1] or data)
+    return name
+
+
 def read_request(model, request, params=None):
 
     user = utils.get_user_or_401(request)
@@ -157,10 +187,15 @@ def read_request(model, request, params=None):
     else:
         data = json.loads(request.body.decode("utf-8"))
 
-        # SearchModelID/put
         if model is SearchModel:
-            if params['name']:
-                name = read_name_SM(data, request.method, params['name'])
+            # SearchModelID/put
+            if params and "name" in params:
+                name = read_name(params["name"], location="url")
+                contexts_clt, config_clt = read_params_SM(data)
+
+            # SearchModel/post
+            else:
+                name = read_name(data)
                 contexts_clt, config_clt = read_params_SM(data)
 
     return user, contexts_clt, config_clt, name, error
