@@ -94,6 +94,7 @@ class AnalyzerIDView(View):
 
         tokenizer = "tokenizer" in body_data and body_data["tokenizer"] or False
         filters = "filters" in body_data and body_data["filters"] or []
+        config = "config" in body_data and body_data["config"] or {}
 
         name = (name.endswith('/') and name[:-1] or name)
         analyzer = get_object_or_404(Analyzer, name=name)
@@ -111,6 +112,7 @@ class AnalyzerIDView(View):
         else:
             status = 204
             data = {}
+            analyzer.config = config
             # On s'assure que tous les filtres existent
             for f in filters:
                 try:
@@ -125,7 +127,8 @@ class AnalyzerIDView(View):
                 analyzer.filter.add(f)
             if tokenizer:
                 analyzer.tokenizer = tkn_chk
-                analyzer.save()
+
+            analyzer.save()
 
         return JsonResponse(data, status=status)
 

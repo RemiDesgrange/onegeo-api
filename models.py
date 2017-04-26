@@ -138,6 +138,7 @@ class Analyzer(models.Model):
     user = models.ForeignKey(User, blank=True, null=True)
     filter = models.ManyToManyField(Filter, blank=True)
     tokenizer = models.ForeignKey("Tokenizer", blank=True, null=True)
+    config = JSONField("Config", blank=True, null=True)
     reserved = models.BooleanField("Reserved", default=False)
 
 

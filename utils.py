@@ -72,11 +72,12 @@ def format_analyzer(obj):
         return [s.filter.name for s in set if s.filter.name is not None]
 
     return clean_my_obj({
-                "location": "analyzers/{}".format(obj.name),
-                "name": obj.name,
-                "tokenfilters": retreive_filters(obj.name) or None,
-                "reserved": obj.reserved,
-                "tokenizer": obj.tokenizer and obj.tokenizer.name or None})
+        "location": "analyzers/{}".format(obj.name),
+        "name": obj.name,
+        "config": obj.config or None,
+        "tokenfilters": retreive_filters(obj.name) or None,
+        "reserved": obj.reserved,
+        "tokenizer": obj.tokenizer and obj.tokenizer.name or None})
 
 
 def format_task(obj):

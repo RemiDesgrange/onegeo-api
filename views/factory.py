@@ -170,11 +170,12 @@ def check_body_data(data, model):
                 "config" : {} if ("config" not in data) else data["config"],
                  "name" : None if ("name" not in data) else data["name"]
         }
-        try:
-            name = search("^[a-z0-9_]{2,100}$", data["name"])
-            name = name.group(0)
-        except AttributeError:
-            return None
+        if items["name"]:
+            try:
+                name = search("^[a-z0-9_]{2,100}$", items["name"])
+                items["name"] = name.group(0)
+            except AttributeError:
+                return None
 
     items = utils.clean_my_obj(items)
     return items
@@ -193,6 +194,9 @@ def read_request(model, request, params=None):
         data = json.loads(request.body.decode("utf-8"))
         print(data)
         if model is SearchModel:
+
+            check_body_data(data, model)
+
             # SearchModelID/put
             if params and "name" in params:
                 name = read_name(params["name"], location="url")
