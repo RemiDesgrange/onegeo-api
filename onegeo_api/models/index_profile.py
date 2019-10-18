@@ -48,7 +48,7 @@ class IndexProfile(AbstractModelProfile):
         default=REINDEX_FREQUENCY_CHOICES[0][0],
         max_length=250)
 
-    resource = models.ForeignKey(to='Resource', verbose_name='Resource')
+    resource = models.ForeignKey(to='Resource', verbose_name='Resource', on_delete=models.CASCADE)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

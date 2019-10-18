@@ -34,7 +34,7 @@ class Analysis(models.Model):
 
     title = models.TextField(verbose_name='Title')
 
-    user = models.ForeignKey(User, verbose_name='User')
+    user = models.ForeignKey(User, verbose_name='User', on_delete=models.CASCADE)
 
     document = JSONField(verbose_name='Document')
 

@@ -38,7 +38,7 @@ class SearchModel(AbstractModelProfile):
         verbose_name='Query DSL', blank=True, null=True)
 
     user = models.ForeignKey(
-        to=User, verbose_name='User', blank=True, null=True)
+        to=User, verbose_name='User', blank=True, null=True, on_delete=models.CASCADE)
 
     indexes = models.ManyToManyField(
         to='IndexProfile', verbose_name='Indexation profiles')

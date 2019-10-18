@@ -62,7 +62,7 @@ class AbstractModelProfile(models.Model):
     description = models.TextField(
         verbose_name='Description', blank=True, null=True)
 
-    user = models.ForeignKey(to=User, blank=True, null=True)
+    user = models.ForeignKey(to=User, blank=True, null=True, on_delete=models.CASCADE)
 
     class Meta(object):
         abstract = True
