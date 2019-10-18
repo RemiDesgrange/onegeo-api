@@ -54,7 +54,8 @@ class Task(models.Model):
     resource_ns = models.CharField(
         verbose_name='Resource Namespace', max_length=100)
 
-    user = models.ForeignKey(to=User, verbose_name='User')
+    user = models.ForeignKey(to=User, verbose_name='User',
+                             on_delete=models.CASCADE)
 
     task_name = models.CharField(
         verbose_name='Task name', max_length=100, null=True, blank=True)
